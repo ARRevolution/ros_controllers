@@ -32,6 +32,33 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 
+/*
+For all cmd_vel inputs:
+enable_twist_cmd_ = true;
+
+Normal - no lin y values 
+top left:
+Linear x = 0.5
+angular z = 1
+
+Holonomic - no anglular values
+top left:
+lin x = 0.5
+lin y = 0.5
+
+left:
+lin x = 0.0
+lin y = 0.5
+
+back right:
+lin x = -0.5
+lin y = -0.5
+
+So steering angle calc is same as xbox controller. 
+Velocity is more complex if to be equal in all driections?
+
+*/
+
 #include <cmath>
 
 #include <tf/transform_datatypes.h>
@@ -412,6 +439,7 @@ namespace four_wheel_steering_controller{
                                     (2.0*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
         rear_right_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
                                      (2.0*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
+		ROS_INFO("1 - front_left_steering = %d", front_left_steering);
       }
       else if(fabs(curr_cmd_twist.lin_x) > 0.001)
       {
@@ -419,6 +447,7 @@ namespace four_wheel_steering_controller{
         front_right_steering = copysign(M_PI_2, curr_cmd_twist.ang);
         rear_left_steering = copysign(M_PI_2, -curr_cmd_twist.ang);
         rear_right_steering = copysign(M_PI_2, -curr_cmd_twist.ang);
+		ROS_INFO("2 - front_left_steering = %d", front_left_steering);
       }
     }
     else
