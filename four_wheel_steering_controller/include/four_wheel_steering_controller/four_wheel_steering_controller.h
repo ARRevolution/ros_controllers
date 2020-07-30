@@ -95,6 +95,7 @@ namespace four_wheel_steering_controller{
 
   private:
     std::string name_;
+	const double max_4ws_angle = 1.178097; //67.5 degrees
 
     /// Odometry related:
     ros::Duration publish_period_;
@@ -188,6 +189,8 @@ namespace four_wheel_steering_controller{
      * \param period Time since the last called to update
      */
     void updateCommand(const ros::Time& time, const ros::Duration& period);
+	
+	double limit_4ws(double input_angle);
 
     /**
      * \brief Brakes the wheels, i.e. sets the velocity to 0
