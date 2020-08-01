@@ -36,6 +36,7 @@
 For all cmd_vel inputs:
 enable_twist_cmd_ = true;
 
+From keyboard teleop:
 Normal - no lin y values 
 top left:
 Linear x = 0.5
@@ -427,14 +428,14 @@ namespace four_wheel_steering_controller{
 																		  +pow(wheel_base_*curr_cmd_twist.ang/2.0,2)))/wheel_radius_
 													   + vel_steering_offset;
 	  }
-	  
+
 	  ROS_INFO("x = %f, y = %f, a = %f",  curr_cmd_twist.lin_x, curr_cmd_twist.lin_y, curr_cmd_twist.ang);
 	  
 	  if (fabs(curr_cmd_twist.ang) > 0.001) // 'Normal' 4WS
 	  { 
 		  // Compute steering angles
-		  if(fabs(2.0*curr_cmd_twist.lin_x) > fabs(curr_cmd_twist.ang*steering_track))  // Only when no angular value?
-		  {
+		if(fabs(2.0*curr_cmd_twist.lin_x) > fabs(curr_cmd_twist.ang*steering_track))  // Only when no angular value?
+		{
 			front_left_steering = atan(curr_cmd_twist.ang*wheel_base_ /
 										(2.0*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
 			front_right_steering = atan(curr_cmd_twist.ang*wheel_base_ /
@@ -444,29 +445,34 @@ namespace four_wheel_steering_controller{
 			rear_right_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
 										 (2.0*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
 			ROS_INFO("1 - front_left_steering = %f", front_left_steering);
-		  }
-		  else if(fabs(curr_cmd_twist.lin_x) > 0.001) // Normal steering
+		}
+		/*  else if(fabs(curr_cmd_twist.lin_x) > 0.001) // Normal steering
 		  {
 			front_left_steering = copysign(M_PI_2, curr_cmd_twist.ang);
 			front_right_steering = copysign(M_PI_2, curr_cmd_twist.ang);
 			rear_left_steering = copysign(M_PI_2, -curr_cmd_twist.ang);
 			rear_right_steering = copysign(M_PI_2, -curr_cmd_twist.ang);
 			ROS_INFO("2 - front_left_steering = %f", front_left_steering);
-		  }
+		  }*/
 		  
-		  front_left_steering = limit_4ws(front_left_steering);
+		  /*front_left_steering = limit_4ws(front_left_steering);
 		  front_right_steering = limit_4ws(front_right_steering);
 		  rear_left_steering = limit_4ws(rear_left_steering);
 		  rear_right_steering = limit_4ws(rear_right_steering);
-		  ROS_INFO("limited_steering = %f", front_left_steering);
+		  ROS_INFO("limited_steering = %f", front_left_steering);*/
 	  }
 	  else if (fabs(curr_cmd_twist.lin_y) > 0.001) // Holonomic 4WS
 	  {
-		  double hol_steering = curr_cmd_twist.lin_y;
-		  front_left_steering = hol_steering;
-		  front_right_steering = hol_steering;
-		  rear_left_steering = hol_steering;
-		  rear_right_steering = hol_steering;
+		  front_left_steering = curr_cmd_twist.lin_y;
+		  front_right_steering = curr_cmd_twist.lin_y;
+		  rear_left_steering = curr_cmd_twist.lin_y;
+		  rear_right_steering = curr_cmd_twist.lin_y;
+		  
+		 /* vel_left_front = curr_cmd_twist.lin_x;
+	      vel_right_front = curr_cmd_twist.lin_x;
+	      vel_left_rear = curr_cmd_twist.lin_x;
+	      vel_right_rear = curr_cmd_twist.lin_x;*/
+		  
 		  ROS_INFO("3 - front_left_steering = %f", front_left_steering);
 	  }
     }
@@ -550,11 +556,9 @@ namespace four_wheel_steering_controller{
   {
 	double result = input_angle;
 	
-	if (input_angle > max_4ws_angle)
-		result = max_4ws_angle;
-	else if (input_angle < -max_4ws_angle)
-		result = -max_4ws_angle;
-	
+	if (fabs(input_angle) > max_4ws_angle)
+		result = copysign(max_4ws_angle, input_angle);
+
 	return result;
   }
 
