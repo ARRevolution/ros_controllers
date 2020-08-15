@@ -423,14 +423,9 @@ namespace four_wheel_steering_controller{
 	    //steering_track = 1.0
 		
 		// Need to limit vel to a maximum of near lin_x. Otherwise speed increases dramatically when steering at low speed at a large ang.z.
-<<<<<<< HEAD
 		// Result was vel = ~5.7 * lin.x at an angle but not when straight
-		double vel_scale_factor = (fabs(curr_cmd_twist.ang*steering_track) / fabs(curr_cmd_twist.lin_x));
-		multip_calc = vel_scale_factor + 1;
-=======
 		double vel_scale_factor = -(fabs(curr_cmd_twist.ang*steering_track) / fabs(curr_cmd_twist.lin_x));
 		multip_calc = fabs(vel_scale_factor) + 1;
->>>>>>> 129fee2cb2c46c60af3b25826a219f3d65fe20c0
 		if ((curr_cmd_twist.ang == 0.0) || (vel_scale_factor < 1.0))
 			vel_scale_factor = 1;
 		
