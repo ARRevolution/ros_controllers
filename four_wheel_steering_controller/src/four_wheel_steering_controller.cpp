@@ -237,8 +237,8 @@ namespace four_wheel_steering_controller{
     for (size_t i = 0; i < front_wheel_joints_.size(); ++i)
     {
       ROS_INFO_STREAM_NAMED(name_,
-                            "Adding left wheel with joint name: " << front_wheel_names[i]
-                            << " and right wheel with joint name: " << rear_wheel_names[i]);
+                            "Adding front wheel with joint name: " << front_wheel_names[i] //left
+                            << " and rear wheel with joint name: " << rear_wheel_names[i]); //right
       front_wheel_joints_[i] = vel_joint_hw->getHandle(front_wheel_names[i]);  // throws on failure
       rear_wheel_joints_[i] = vel_joint_hw->getHandle(rear_wheel_names[i]);  // throws on failure
     }
@@ -247,8 +247,8 @@ namespace four_wheel_steering_controller{
     for (size_t i = 0; i < front_steering_joints_.size(); ++i)
     {
       ROS_INFO_STREAM_NAMED(name_,
-                            "Adding left steering with joint name: " << front_steering_names[i]
-                            << " and right steering with joint name: " << rear_steering_names[i]);
+                            "Adding front steering with joint name: " << front_steering_names[i] //left
+                            << " and rear steering with joint name: " << rear_steering_names[i]); //right
       front_steering_joints_[i] = pos_joint_hw->getHandle(front_steering_names[i]);  // throws on failure
       rear_steering_joints_[i] = pos_joint_hw->getHandle(rear_steering_names[i]);  // throws on failure
     }
@@ -378,6 +378,7 @@ namespace four_wheel_steering_controller{
     {
       cmd = &curr_cmd_twist;
       enable_twist_cmd_ = true;
+	  curr_cmd_twist.ang = -curr_cmd_twist.ang;
     }
 
     const double dt = (time - cmd->stamp).toSec();
@@ -422,8 +423,8 @@ namespace four_wheel_steering_controller{
 	    //steering_track = 1.0
 		
 		// Need to limit vel to a maximum of near lin_x. Otherwise speed increases dramatically when steering at low speed at a large ang.z.
-		double vel_scale_factor = (fabs(curr_cmd_twist.ang*steering_track) / fabs(curr_cmd_twist.lin_x));
-		multip_calc = vel_scale_factor + 1;
+		double vel_scale_factor = -(fabs(curr_cmd_twist.ang*steering_track) / fabs(curr_cmd_twist.lin_x));
+		multip_calc = fabs(vel_scale_factor) + 1;
 		if ((curr_cmd_twist.ang == 0.0) || (vel_scale_factor < 1.0))
 			vel_scale_factor = 1;
 		
@@ -485,7 +486,7 @@ namespace four_wheel_steering_controller{
 										(multip_calc*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
 			rear_right_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
 										 (multip_calc*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
-			//ROS_INFO("2 - front_left_steering = %f", front_left_steering);
+			//ROS_INFO("2 - front_left_steering = %f, multip_calc = %f", front_left_steering, multip_calc);
 		}
 	  }
 	  else if (fabs(curr_cmd_twist.lin_y) > 0.001) // Holonomic 4WS
