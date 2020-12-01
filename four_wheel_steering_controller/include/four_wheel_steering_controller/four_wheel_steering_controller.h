@@ -47,6 +47,14 @@
 #include <four_wheel_steering_controller/speed_limiter.h>
 
 namespace four_wheel_steering_controller{
+	
+	enum {
+		FOUR_WHEEL_STEERING_MODE_STOPPED,
+		FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY,
+		FOUR_WHEEL_STEERING_MODE_SPIN,
+		FOUR_WHEEL_STEERING_MODE_4WS,
+		FOUR_WHEEL_STEERING_MODE_HOLONOMIC
+	};
 
   /**
    * This class makes some assumptions on the model of the robot:
@@ -175,6 +183,11 @@ namespace four_wheel_steering_controller{
     CommandTwist last0_cmd_;
     SpeedLimiter limiter_lin_;
     SpeedLimiter limiter_ang_;
+	
+	// Steering and velocity status
+	int current_steering_mode;
+	bool steering_pos_at_zero;
+	bool wheel_velocity_at_zero;
 
   private:
 

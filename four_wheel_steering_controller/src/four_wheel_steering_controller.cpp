@@ -162,6 +162,10 @@ namespace four_wheel_steering_controller{
                           << velocity_rolling_window_size << ".");
 
     odometry_.setVelocityRollingWindowSize(velocity_rolling_window_size);
+	
+	current_steering_mode = FOUR_WHEEL_STEERING_MODE_STOPPED;
+	steering_pos_at_zero = false;
+	wheel_velocity_at_zero = false;
 
     // Twist command related:
     controller_nh.param("cmd_vel_timeout", cmd_vel_timeout_, cmd_vel_timeout_);
@@ -315,7 +319,34 @@ namespace four_wheel_steering_controller{
     // Estimate linear and angular velocity using joint information
     odometry_.update(fl_speed, fr_speed, rl_speed, rr_speed,
                      front_steering_pos, rear_steering_pos, time);
-
+					 
+	// Update Local Steering and velocity status
+	if ((front_steering_pos == 0.0) && (rear_steering_pos == 0.0))
+	{
+		steering_pos_at_zero = true;
+		current_steering_mode = FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY;
+		ROS_INFO_STREAM_NAMED(name_,"pos_at_zero");
+	}
+	else
+		steering_pos_at_zero = false;
+	
+	if (((fabs(fl_speed) < 0.002) && (fabs(fr_speed) < 0.002) && (fabs(rl_speed) < 0.002) && (fabs(rr_speed) < 0.002)) || (fabs(odometry_.getLinear()) < 0.002))
+	{
+		wheel_velocity_at_zero = true;
+		ROS_INFO_STREAM_NAMED(name_,"vel_at_zero");
+		
+		if (steering_pos_at_zero)
+		{
+			current_steering_mode = FOUR_WHEEL_STEERING_MODE_STOPPED;
+			ROS_INFO_STREAM_NAMED(name_,"stopped");
+		}
+	}
+	else
+	{
+		ROS_INFO_STREAM_NAMED(name_,"speeds - " << fl_speed << " - " << fr_speed << " - " << rl_speed << " - " << rr_speed << " -odom- " << fabs(odometry_.getLinear()));
+		wheel_velocity_at_zero = false;
+	}
+	
     // Publish odometry message
     if (last_state_publish_time_ + publish_period_ < time)
     {
@@ -413,8 +444,9 @@ namespace four_wheel_steering_controller{
       last0_cmd_ = curr_cmd_twist;
 	  double multip_calc;
 
-	  // Compute wheels velocities:
-	  if(fabs(curr_cmd_twist.lin_x) > 0.001) // This alone will steer slightly if ang.z or lin.x is too small to trigger ackerman.
+	  // Compute wheels velocities - only if not in spin mode
+	  // This alone will steer slightly if ang.z or lin.x is too small to trigger ackerman.
+	  if ((current_steering_mode != FOUR_WHEEL_STEERING_MODE_SPIN) && (fabs(curr_cmd_twist.lin_x) > 0.001)) 
 	  {
 		// ROS_INFO("wheel_radius_ = %f, off = %f", wheel_radius_, wheel_steering_y_offset_);
 		// wheel_radius_ = 0.1725
@@ -448,50 +480,63 @@ namespace four_wheel_steering_controller{
 
 	  //ROS_INFO("x = %f, y = %f, a = %f", curr_cmd_twist.lin_x, curr_cmd_twist.lin_y, curr_cmd_twist.ang);
 
-	  if (fabs(curr_cmd_twist.ang) > 0.001) // 'Normal' 4WS
+	  if (fabs(curr_cmd_twist.ang) > 0.001)
 	  { 		
-		if (curr_cmd_twist.lin_x == 0) // go into spin mode
+	    // Need to make absolutely certain that we are stationary before going into spin mode - otherwise damnage will occur!!!
+		if ((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_SPIN) && (curr_cmd_twist.lin_x == 0)) // go into spin mode
 		{	
+			current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;
+			
+			// Keep in spin angle unitl lin.x set? - means when changing direction near 12oClock the steering pos won't try to reset.
 			double spin_angle = M_PI_2 / 2;
 			front_left_steering = -spin_angle;
 			front_right_steering = spin_angle;
 			rear_left_steering = spin_angle;
 			rear_right_steering = -spin_angle;
 			
+			// only set velocity once all wheels are at 45 degrees
 			vel_left_front = -curr_cmd_twist.ang;
 			vel_right_front = curr_cmd_twist.ang;
 			vel_left_rear = -curr_cmd_twist.ang;
 			vel_right_rear = curr_cmd_twist.ang;
 			//ROS_INFO("4 spin - front_left_steering = %f", front_left_steering);
 		}
-		else if (fabs(2.0*curr_cmd_twist.lin_x) > fabs(curr_cmd_twist.ang*steering_track)) // 4WS Ackerman
+		// 4WS Ackerman - make sure other steering modes have reset to 0 pos before starting
+		else if ((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY) || (current_steering_mode == FOUR_WHEEL_STEERING_MODE_4WS))
 		{
-			front_left_steering = atan(curr_cmd_twist.ang*wheel_base_ /
-										(2.0*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
-			front_right_steering = atan(curr_cmd_twist.ang*wheel_base_ /
-										 (2.0*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
-			rear_left_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
-										(2.0*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
-			rear_right_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
-										 (2.0*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
-			//ROS_INFO("1 - front_left_steering = %f", front_left_steering);
-		}
-		else 
-		{	
-			// Same as above 4WS Ackerman but allows steering at large ang.z with small lin.x
-			front_left_steering = atan(curr_cmd_twist.ang*wheel_base_ /
-										(multip_calc*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
-			front_right_steering = atan(curr_cmd_twist.ang*wheel_base_ /
-										 (multip_calc*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
-			rear_left_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
-										(multip_calc*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
-			rear_right_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
-										 (multip_calc*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
-			//ROS_INFO("2 - front_left_steering = %f, multip_calc = %f", front_left_steering, multip_calc);
+			current_steering_mode = FOUR_WHEEL_STEERING_MODE_4WS;
+			
+			if (fabs(2.0*curr_cmd_twist.lin_x) > fabs(curr_cmd_twist.ang*steering_track))
+			{
+				front_left_steering = atan(curr_cmd_twist.ang*wheel_base_ /
+											(2.0*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
+				front_right_steering = atan(curr_cmd_twist.ang*wheel_base_ /
+											 (2.0*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
+				rear_left_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
+											(2.0*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
+				rear_right_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
+											 (2.0*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
+				//ROS_INFO("1 - front_left_steering = %f", front_left_steering);
+			}
+			else 
+			{	
+				// Same as above 4WS Ackerman but allows steering at large ang.z with small lin.x
+				front_left_steering = atan(curr_cmd_twist.ang*wheel_base_ /
+											(multip_calc*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
+				front_right_steering = atan(curr_cmd_twist.ang*wheel_base_ /
+											 (multip_calc*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
+				rear_left_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
+											(multip_calc*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
+				rear_right_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
+											 (multip_calc*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
+				//ROS_INFO("2 - front_left_steering = %f, multip_calc = %f", front_left_steering, multip_calc);
+			}
 		}
 	  }
-	  else if (fabs(curr_cmd_twist.lin_y) > 0.001) // Holonomic 4WS
+	  // Holonomic 4WS - make sure all wheels are at 0 pos first, otherwise get cruel combination of steering positions
+	  else if (((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY) || (current_steering_mode == FOUR_WHEEL_STEERING_MODE_HOLONOMIC)) && (fabs(curr_cmd_twist.lin_y) > 0.001)) 
 	  {
+		  current_steering_mode = FOUR_WHEEL_STEERING_MODE_HOLONOMIC;
 		  front_left_steering = -curr_cmd_twist.lin_y;
 		  front_right_steering = -curr_cmd_twist.lin_y;
 		  rear_left_steering = -curr_cmd_twist.lin_y;
