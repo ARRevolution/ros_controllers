@@ -166,6 +166,7 @@ namespace four_wheel_steering_controller{
 	current_steering_mode = FOUR_WHEEL_STEERING_MODE_STOPPED;
 	steering_pos_at_zero = false;
 	wheel_velocity_at_zero = false;
+	steering_pos_at_spin = false;
 
     // Twist command related:
     controller_nh.param("cmd_vel_timeout", cmd_vel_timeout_, cmd_vel_timeout_);
@@ -233,6 +234,9 @@ namespace four_wheel_steering_controller{
 
     setOdomPubFields(root_nh, controller_nh);
 
+	// calculate the spin mode steering angle
+	spin_mode_steering_angle = atan(wheel_base_ / track_);
+	ROS_INFO_STREAM_NAMED(name_, "Calculated the spin mode steering angle - " << spin_mode_steering_angle << " Rads = " << ((spin_mode_steering_angle * 180 ) / M_PI) << " Degrees");	
 
     hardware_interface::VelocityJointInterface *const vel_joint_hw = robot_hw->get<hardware_interface::VelocityJointInterface>();
     hardware_interface::PositionJointInterface *const pos_joint_hw = robot_hw->get<hardware_interface::PositionJointInterface>();
@@ -347,6 +351,17 @@ namespace four_wheel_steering_controller{
 		wheel_velocity_at_zero = false;
 	}
 	
+	// Check if steering is at spin position
+	double spin_angle_tol = 0.00001; // + and - this
+	if (is_steering_pos_at_spin(fabs(fl_steering), spin_mode_steering_angle, spin_angle_tol) && is_steering_pos_at_spin(fabs(fr_steering), spin_mode_steering_angle, spin_angle_tol) && is_steering_pos_at_spin(fabs(rl_steering), spin_mode_steering_angle, spin_angle_tol) && is_steering_pos_at_spin(fabs(rr_steering), spin_mode_steering_angle, spin_angle_tol))
+	{
+		steering_pos_at_spin = true;
+		current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;
+		ROS_INFO_STREAM_NAMED(name_,"pos_at_spin - " << fl_steering << " - " << fr_steering << " - " << rl_steering << " - " << rr_steering);
+	}
+	else
+		steering_pos_at_spin = false;
+		
     // Publish odometry message
     if (last_state_publish_time_ + publish_period_ < time)
     {
@@ -480,7 +495,7 @@ namespace four_wheel_steering_controller{
 
 	  //ROS_INFO("x = %f, y = %f, a = %f", curr_cmd_twist.lin_x, curr_cmd_twist.lin_y, curr_cmd_twist.ang);
 
-	  if (fabs(curr_cmd_twist.ang) > 0.001)
+	  if ((fabs(curr_cmd_twist.ang) > 0.001) || steering_pos_at_spin) //(current_steering_mode == FOUR_WHEEL_STEERING_MODE_SPIN))
 	  { 		
 	    // Need to make absolutely certain that we are stationary before going into spin mode - otherwise damnage will occur!!!
 		if ((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_SPIN) && (curr_cmd_twist.lin_x == 0)) // go into spin mode
@@ -488,18 +503,22 @@ namespace four_wheel_steering_controller{
 			current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;
 			
 			// Keep in spin angle unitl lin.x set? - means when changing direction near 12oClock the steering pos won't try to reset.
-			double spin_angle = M_PI_2 / 2;
-			front_left_steering = -spin_angle;
-			front_right_steering = spin_angle;
-			rear_left_steering = spin_angle;
-			rear_right_steering = -spin_angle;
+			//double spin_angle = M_PI_2 / 2;
+			front_left_steering = -spin_mode_steering_angle;
+			front_right_steering = spin_mode_steering_angle;
+			rear_left_steering = spin_mode_steering_angle;
+			rear_right_steering = -spin_mode_steering_angle;
 			
 			// only set velocity once all wheels are at 45 degrees
-			vel_left_front = -curr_cmd_twist.ang;
-			vel_right_front = curr_cmd_twist.ang;
-			vel_left_rear = -curr_cmd_twist.ang;
-			vel_right_rear = curr_cmd_twist.ang;
+			if (steering_pos_at_spin)
+			{
+				vel_left_front = -curr_cmd_twist.ang;
+				vel_right_front = curr_cmd_twist.ang;
+				vel_left_rear = -curr_cmd_twist.ang;
+				vel_right_rear = curr_cmd_twist.ang;
+			}
 			//ROS_INFO("4 spin - front_left_steering = %f", front_left_steering);
+			
 		}
 		// 4WS Ackerman - make sure other steering modes have reset to 0 pos before starting
 		else if ((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY) || (current_steering_mode == FOUR_WHEEL_STEERING_MODE_4WS))

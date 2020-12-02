@@ -51,6 +51,7 @@ namespace four_wheel_steering_controller{
 	enum {
 		FOUR_WHEEL_STEERING_MODE_STOPPED,
 		FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY,
+		//FOUR_WHEEL_STEERING_MODE_SPIN_SETUP,
 		FOUR_WHEEL_STEERING_MODE_SPIN,
 		FOUR_WHEEL_STEERING_MODE_4WS,
 		FOUR_WHEEL_STEERING_MODE_HOLONOMIC
@@ -165,6 +166,9 @@ namespace four_wheel_steering_controller{
 
     /// Wheel base (distance between front and rear wheel):
     double wheel_base_;
+	
+	/// Spin mode steering angle
+	double spin_mode_steering_angle;
 
     /// Timeout to consider cmd_vel commands old:
     double cmd_vel_timeout_;
@@ -187,7 +191,16 @@ namespace four_wheel_steering_controller{
 	// Steering and velocity status
 	int current_steering_mode;
 	bool steering_pos_at_zero;
+	bool steering_pos_at_spin;
 	bool wheel_velocity_at_zero;
+	
+	bool is_steering_pos_at_spin(double in, double target, double tol)
+	{
+		bool res = false;
+		if ((in <= target + tol) && (in >= target - tol))
+			res = true;
+		return res;
+	}
 
   private:
 
