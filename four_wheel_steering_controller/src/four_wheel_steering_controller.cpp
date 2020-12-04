@@ -193,7 +193,18 @@ namespace four_wheel_steering_controller{
     controller_nh.param("angular/z/min_velocity"           , limiter_ang_.min_velocity           , -limiter_ang_.max_velocity          );
     controller_nh.param("angular/z/max_acceleration"       , limiter_ang_.max_acceleration       ,  limiter_ang_.max_acceleration      );
     controller_nh.param("angular/z/min_acceleration"       , limiter_ang_.min_acceleration       , -limiter_ang_.max_acceleration      );
+	
+	// Tolerances
+	controller_nh.param("spin_angle_tol", spin_angle_tol_, spin_angle_tol_);
+    ROS_INFO_STREAM_NAMED(name_, "Spin angle tolerance is " << spin_angle_tol_);
+		
+	controller_nh.param("velocity_tol", velocity_tol_, velocity_tol_);
+    ROS_INFO_STREAM_NAMED(name_, "Velocity tolerance is " << velocity_tol_);	
 
+	// 4WS or Skid Steer
+    controller_nh.param("fws_n_skid_steer", fws_n_skid_steer_, fws_n_skid_steer_);
+    ROS_INFO_STREAM_NAMED(name_, "Steering Mode " << (fws_n_skid_steer_?"4WS":"Skid Steer"));	
+						  
     // If either parameter is not available, we need to look up the value in the URDF
     bool lookup_track = !controller_nh.getParam("track", track_);
     bool lookup_wheel_radius = !controller_nh.getParam("wheel_radius", wheel_radius_);
@@ -328,39 +339,33 @@ namespace four_wheel_steering_controller{
 	if ((front_steering_pos == 0.0) && (rear_steering_pos == 0.0))
 	{
 		steering_pos_at_zero = true;
-		current_steering_mode = FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY;
-		ROS_INFO_STREAM_NAMED(name_,"pos_at_zero");
 	}
 	else
 		steering_pos_at_zero = false;
 	
-	if (((fabs(fl_speed) < 0.002) && (fabs(fr_speed) < 0.002) && (fabs(rl_speed) < 0.002) && (fabs(rr_speed) < 0.002)) || (fabs(odometry_.getLinear()) < 0.002))
+	if (((fabs(fl_speed) < velocity_tol_) && (fabs(fr_speed) < velocity_tol_) && (fabs(rl_speed) < velocity_tol_) && (fabs(rr_speed) < velocity_tol_)) || (fabs(odometry_.getLinear()) < velocity_tol_))
 	{
 		wheel_velocity_at_zero = true;
-		ROS_INFO_STREAM_NAMED(name_,"vel_at_zero");
-		
-		if (steering_pos_at_zero)
-		{
-			current_steering_mode = FOUR_WHEEL_STEERING_MODE_STOPPED;
-			ROS_INFO_STREAM_NAMED(name_,"stopped");
-		}
+		//ROS_INFO_STREAM_NAMED(name_,"vel_at_zero");
 	}
 	else
 	{
-		ROS_INFO_STREAM_NAMED(name_,"speeds - " << fl_speed << " - " << fr_speed << " - " << rl_speed << " - " << rr_speed << " -odom- " << fabs(odometry_.getLinear()));
+		//ROS_INFO_STREAM_NAMED(name_,"speeds - " << fl_speed << " - " << fr_speed << " - " << rl_speed << " - " << rr_speed << " -odom- " << fabs(odometry_.getLinear()));
 		wheel_velocity_at_zero = false;
 	}
 	
 	// Check if steering is at spin position
-	double spin_angle_tol = 0.00001; // + and - this
-	if (is_steering_pos_at_spin(fabs(fl_steering), spin_mode_steering_angle, spin_angle_tol) && is_steering_pos_at_spin(fabs(fr_steering), spin_mode_steering_angle, spin_angle_tol) && is_steering_pos_at_spin(fabs(rl_steering), spin_mode_steering_angle, spin_angle_tol) && is_steering_pos_at_spin(fabs(rr_steering), spin_mode_steering_angle, spin_angle_tol))
+	if (is_steering_pos_at_spin(fl_steering, -spin_mode_steering_angle, spin_angle_tol_) && is_steering_pos_at_spin(fr_steering, spin_mode_steering_angle, spin_angle_tol_) && is_steering_pos_at_spin(rl_steering, spin_mode_steering_angle, spin_angle_tol_) && is_steering_pos_at_spin(rr_steering, -spin_mode_steering_angle, spin_angle_tol_))
 	{
 		steering_pos_at_spin = true;
-		current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;
-		ROS_INFO_STREAM_NAMED(name_,"pos_at_spin - " << fl_steering << " - " << fr_steering << " - " << rl_steering << " - " << rr_steering);
+		//current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;
+		//ROS_INFO_STREAM_NAMED(name_,"pos_at_spin - " << fl_steering << " - " << fr_steering << " - " << rl_steering << " - " << rr_steering);
 	}
 	else
+	{
 		steering_pos_at_spin = false;
+		//ROS_INFO_STREAM_NAMED(name_,"pos_NOT_at_spin - " << fl_steering << " - " << fr_steering << " - " << rl_steering << " - " << rr_steering);
+	}
 		
     // Publish odometry message
     if (last_state_publish_time_ + publish_period_ < time)
@@ -450,8 +455,45 @@ namespace four_wheel_steering_controller{
     double front_left_steering = 0, front_right_steering = 0;
     double rear_left_steering = 0, rear_right_steering = 0;
 
-    if(enable_twist_cmd_ == true)
+    if (enable_twist_cmd_ == true)
     {
+	  // Steering Mode state machine
+	  if (steering_pos_at_spin)
+		  current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;
+	  else if (current_steering_mode == FOUR_WHEEL_STEERING_MODE_SPIN)
+		  current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN_TRANS;
+	  else if (steering_pos_at_zero)
+	  {
+		current_steering_mode = FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY;
+		
+		if (wheel_velocity_at_zero) // This is true in spin mode when not moving - so only valid when 'steering_pos_at_zero'
+			current_steering_mode = FOUR_WHEEL_STEERING_MODE_STOPPED;
+	  }	  
+		
+	  if ((fabs(curr_cmd_twist.ang) > 0.001) || (current_steering_mode == FOUR_WHEEL_STEERING_MODE_SPIN))
+	  { 		
+	    // Need to make absolutely certain that we are stationary before going into spin mode - otherwise damnage will occur!!!
+		if ((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_SPIN) && (curr_cmd_twist.lin_x == 0)) // go into spin mode //
+			current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;
+		else if (current_steering_mode == FOUR_WHEEL_STEERING_MODE_SPIN) // Transistion out of spin
+				current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN_TRANS;
+		// 4WS Ackerman or Skid Steer depending on param '4ws_n_skid_steer'- make sure other steering modes have reset to 0 pos before starting
+		else if ((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY) || (current_steering_mode == FOUR_WHEEL_STEERING_MODE_4WS))
+		{
+			if (fws_n_skid_steer_)
+				current_steering_mode = FOUR_WHEEL_STEERING_MODE_4WS;
+			
+			// else is left as FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY which results in gentle skid steering.
+		}
+	  }
+	  // Holonomic 4WS - make sure all wheels are at 0 pos first, otherwise get cruel combination of steering positions
+	  else if (((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY) || (current_steering_mode == FOUR_WHEEL_STEERING_MODE_HOLONOMIC)) && (fabs(curr_cmd_twist.lin_y) > 0.001)) 
+	  	  current_steering_mode = FOUR_WHEEL_STEERING_MODE_HOLONOMIC;		
+		
+	
+		//ROS_INFO_STREAM_NAMED(name_, "current_steering_mode = " << current_steering_mode);
+		
+		
       // Limit velocities and accelerations:
       limiter_lin_.limit(curr_cmd_twist.lin_x, last0_cmd_.lin_x, last1_cmd_.lin_x, cmd_dt);
       limiter_ang_.limit(curr_cmd_twist.ang, last0_cmd_.ang, last1_cmd_.ang, cmd_dt);
@@ -461,49 +503,64 @@ namespace four_wheel_steering_controller{
 
 	  // Compute wheels velocities - only if not in spin mode
 	  // This alone will steer slightly if ang.z or lin.x is too small to trigger ackerman.
-	  if ((current_steering_mode != FOUR_WHEEL_STEERING_MODE_SPIN) && (fabs(curr_cmd_twist.lin_x) > 0.001)) 
+	  if ((current_steering_mode != FOUR_WHEEL_STEERING_MODE_SPIN) && (current_steering_mode != FOUR_WHEEL_STEERING_MODE_SPIN_TRANS) && (fabs(curr_cmd_twist.lin_x) > 0.001))
 	  {
-		// ROS_INFO("wheel_radius_ = %f, off = %f", wheel_radius_, wheel_steering_y_offset_);
-		// wheel_radius_ = 0.1725
-		// wheel_steering_y_offset_ = 0
-	    //wheel_base_ = 1.263000
-	    //steering_track = 1.0
-		
-		// Need to limit vel to a maximum of near lin_x. Otherwise speed increases dramatically when steering at low speed at a large ang.z.
-		// Result was vel = ~5.7 * lin.x at an angle but not when straight
-		double vel_scale_factor = -(fabs(curr_cmd_twist.ang*steering_track) / fabs(curr_cmd_twist.lin_x));
-		multip_calc = fabs(vel_scale_factor) + 1;
-		if ((curr_cmd_twist.ang == 0.0) || (vel_scale_factor < 1.0))
-			vel_scale_factor = 1;
-		
-		double vel_steering_offset = (curr_cmd_twist.ang*wheel_steering_y_offset_)/wheel_radius_;
-		vel_left_front  = (copysign(1.0, curr_cmd_twist.lin_x) * sqrt((pow(curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track/2,2)
-																		   +pow(wheel_base_*curr_cmd_twist.ang/2.0,2)))/wheel_radius_
-														- vel_steering_offset)/vel_scale_factor;
-		vel_right_front = (copysign(1.0, curr_cmd_twist.lin_x) * sqrt((pow(curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track/2,2)
-																		   +pow(wheel_base_*curr_cmd_twist.ang/2.0,2)))/wheel_radius_
-														+ vel_steering_offset)/vel_scale_factor;
-		vel_left_rear = (copysign(1.0, curr_cmd_twist.lin_x) * sqrt((pow(curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track/2,2)
-																		 +pow(wheel_base_*curr_cmd_twist.ang/2.0,2)))/wheel_radius_
-													  - vel_steering_offset)/vel_scale_factor;
-		vel_right_rear = (copysign(1.0, curr_cmd_twist.lin_x) * sqrt((pow(curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track/2,2)
-																		  +pow(wheel_base_*curr_cmd_twist.ang/2.0,2)))/wheel_radius_
-													   + vel_steering_offset)/vel_scale_factor;
-													   
-		//ROS_INFO("vel_l = %f, scale = %f", vel_left_front, vel_scale_factor);
+		  if (current_steering_mode == FOUR_WHEEL_STEERING_MODE_HOLONOMIC)
+		  {			  
+			// To be the same vel as other steering modes
+			vel_left_front = (copysign(1.0, curr_cmd_twist.lin_x)) * sqrt(pow(curr_cmd_twist.lin_x,2))/wheel_radius_;
+			vel_right_front = vel_left_front;
+			vel_left_rear = vel_left_front;
+			vel_right_rear = vel_left_front;
+			//ROS_INFO_STREAM_NAMED(name_, "vel_l = " << vel_left_front);
+		  }
+		  else // Ackerman or Skid -- Should be using the actual steering angles here instead of the commanded? Rapidling changing from L to R results in sim bouncing.
+		  {
+			  // Forward / reverse issue - reverse steers in the opposite diredction to forward.
+			  
+			// ROS_INFO("wheel_radius_ = %f, off = %f", wheel_radius_, wheel_steering_y_offset_);
+			// wheel_radius_ = 0.1725
+			// wheel_steering_y_offset_ = 0
+			//wheel_base_ = 1.263000
+			//steering_track = 1.0
+			
+			// Need to limit vel to a maximum of near lin_x. Otherwise speed increases dramatically when steering at low speed at a large ang.z.
+			// Result was vel = ~5.7 * lin.x at an angle but not when straight
+			double vel_scale_factor = -(fabs(curr_cmd_twist.ang*steering_track) / fabs(curr_cmd_twist.lin_x));
+			multip_calc = fabs(vel_scale_factor) + 1;
+			
+			ROS_INFO_STREAM_NAMED(name_, " scale = " << vel_scale_factor << " multip_calc = " << multip_calc);
+			
+			//if ((curr_cmd_twist.ang == 0.0) || (vel_scale_factor < 1.0)) // sign issue here? need to preserve vel_scale_factor sign?
+			//	vel_scale_factor = 1;
+			if ((curr_cmd_twist.ang == 0.0) || (fabs(vel_scale_factor) < 1.0))
+				vel_scale_factor = copysign(1.0, vel_scale_factor);
+			
+			double vel_steering_offset = (curr_cmd_twist.ang*wheel_steering_y_offset_)/wheel_radius_;
+			vel_left_front  = (copysign(1.0, curr_cmd_twist.lin_x) * sqrt((pow(curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track/2,2)
+																			   +pow(wheel_base_*curr_cmd_twist.ang/2.0,2)))/wheel_radius_
+															- vel_steering_offset)/vel_scale_factor;
+			vel_right_front = (copysign(1.0, curr_cmd_twist.lin_x) * sqrt((pow(curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track/2,2)
+																			   +pow(wheel_base_*curr_cmd_twist.ang/2.0,2)))/wheel_radius_
+															+ vel_steering_offset)/vel_scale_factor;
+			vel_left_rear = (copysign(1.0, curr_cmd_twist.lin_x) * sqrt((pow(curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track/2,2)
+																			 +pow(wheel_base_*curr_cmd_twist.ang/2.0,2)))/wheel_radius_
+														  - vel_steering_offset)/vel_scale_factor;
+			vel_right_rear = (copysign(1.0, curr_cmd_twist.lin_x) * sqrt((pow(curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track/2,2)
+																			  +pow(wheel_base_*curr_cmd_twist.ang/2.0,2)))/wheel_radius_
+														   + vel_steering_offset)/vel_scale_factor;
+														   
+			ROS_INFO_STREAM_NAMED(name_, "vel_l = " << vel_left_front << " vel scal " << vel_scale_factor);
+		  }
 	  }
 
 	  //ROS_INFO("x = %f, y = %f, a = %f", curr_cmd_twist.lin_x, curr_cmd_twist.lin_y, curr_cmd_twist.ang);
-
-	  if ((fabs(curr_cmd_twist.ang) > 0.001) || steering_pos_at_spin) //(current_steering_mode == FOUR_WHEEL_STEERING_MODE_SPIN))
-	  { 		
-	    // Need to make absolutely certain that we are stationary before going into spin mode - otherwise damnage will occur!!!
-		if ((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_SPIN) && (curr_cmd_twist.lin_x == 0)) // go into spin mode
-		{	
-			current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;
-			
-			// Keep in spin angle unitl lin.x set? - means when changing direction near 12oClock the steering pos won't try to reset.
-			//double spin_angle = M_PI_2 / 2;
+	  
+	  // Steering Mode state machine
+	  switch (current_steering_mode)
+	  {
+		  case FOUR_WHEEL_STEERING_MODE_SPIN:
+		  {
 			front_left_steering = -spin_mode_steering_angle;
 			front_right_steering = spin_mode_steering_angle;
 			rear_left_steering = spin_mode_steering_angle;
@@ -517,14 +574,11 @@ namespace four_wheel_steering_controller{
 				vel_left_rear = -curr_cmd_twist.ang;
 				vel_right_rear = curr_cmd_twist.ang;
 			}
-			//ROS_INFO("4 spin - front_left_steering = %f", front_left_steering);
-			
-		}
-		// 4WS Ackerman - make sure other steering modes have reset to 0 pos before starting
-		else if ((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY) || (current_steering_mode == FOUR_WHEEL_STEERING_MODE_4WS))
-		{
-			current_steering_mode = FOUR_WHEEL_STEERING_MODE_4WS;
-			
+		  }
+		  break;
+		  
+		  case FOUR_WHEEL_STEERING_MODE_4WS:
+		  {
 			if (fabs(2.0*curr_cmd_twist.lin_x) > fabs(curr_cmd_twist.ang*steering_track))
 			{
 				front_left_steering = atan(curr_cmd_twist.ang*wheel_base_ /
@@ -539,6 +593,7 @@ namespace four_wheel_steering_controller{
 			}
 			else 
 			{	
+		/*
 				// Same as above 4WS Ackerman but allows steering at large ang.z with small lin.x
 				front_left_steering = atan(curr_cmd_twist.ang*wheel_base_ /
 											(multip_calc*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
@@ -549,22 +604,26 @@ namespace four_wheel_steering_controller{
 				rear_right_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
 											 (multip_calc*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
 				//ROS_INFO("2 - front_left_steering = %f, multip_calc = %f", front_left_steering, multip_calc);
+				*/
 			}
-		}
+		  }
+		  break;
+		  
+		  case FOUR_WHEEL_STEERING_MODE_HOLONOMIC:
+		  {
+				front_left_steering = -curr_cmd_twist.lin_y;
+				front_right_steering = -curr_cmd_twist.lin_y;
+				rear_left_steering = -curr_cmd_twist.lin_y;
+				rear_right_steering = -curr_cmd_twist.lin_y;
+		  }
+		  break;
+		  
+		  default:
+			break;
 	  }
-	  // Holonomic 4WS - make sure all wheels are at 0 pos first, otherwise get cruel combination of steering positions
-	  else if (((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY) || (current_steering_mode == FOUR_WHEEL_STEERING_MODE_HOLONOMIC)) && (fabs(curr_cmd_twist.lin_y) > 0.001)) 
-	  {
-		  current_steering_mode = FOUR_WHEEL_STEERING_MODE_HOLONOMIC;
-		  front_left_steering = -curr_cmd_twist.lin_y;
-		  front_right_steering = -curr_cmd_twist.lin_y;
-		  rear_left_steering = -curr_cmd_twist.lin_y;
-		  rear_right_steering = -curr_cmd_twist.lin_y;
-		  		  
-		  //ROS_INFO("3 - front_left_steering = %f", front_left_steering);
-	  }
+	  ROS_INFO_STREAM_NAMED(name_, "fl = " << front_left_steering << "fr = " << front_right_steering << "rl = " << rear_left_steering << "rr = " << rear_right_steering);
     }
-    else
+    else // 4WS command type
     {
       // Limit velocities and accelerations:
       limiter_lin_.limit(curr_cmd_4ws.lin, last0_cmd_.lin_x, last1_cmd_.lin_x, cmd_dt);

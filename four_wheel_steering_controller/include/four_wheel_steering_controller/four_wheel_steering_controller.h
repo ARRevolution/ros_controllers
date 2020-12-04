@@ -51,7 +51,7 @@ namespace four_wheel_steering_controller{
 	enum {
 		FOUR_WHEEL_STEERING_MODE_STOPPED,
 		FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY,
-		//FOUR_WHEEL_STEERING_MODE_SPIN_SETUP,
+		FOUR_WHEEL_STEERING_MODE_SPIN_TRANS,
 		FOUR_WHEEL_STEERING_MODE_SPIN,
 		FOUR_WHEEL_STEERING_MODE_4WS,
 		FOUR_WHEEL_STEERING_MODE_HOLONOMIC
@@ -187,6 +187,13 @@ namespace four_wheel_steering_controller{
     CommandTwist last0_cmd_;
     SpeedLimiter limiter_lin_;
     SpeedLimiter limiter_ang_;
+	
+	// Tolerances
+	double spin_angle_tol_;
+	double velocity_tol_;
+	
+	// Steering Mode
+	bool fws_n_skid_steer_;
 	
 	// Steering and velocity status
 	int current_steering_mode;
