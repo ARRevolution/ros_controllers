@@ -429,7 +429,10 @@ namespace four_wheel_steering_controller{
     {
       cmd = &curr_cmd_twist;
       enable_twist_cmd_ = true;
-	  curr_cmd_twist.ang = -curr_cmd_twist.ang;
+
+	  // So that reverse will keep steering on the same lock as forward 
+	  if (curr_cmd_twist.lin_x >= 0.0)
+		  curr_cmd_twist.ang = -curr_cmd_twist.ang;		  
     }
 
     const double dt = (time - cmd->stamp).toSec();
@@ -508,7 +511,7 @@ namespace four_wheel_steering_controller{
 		  if (current_steering_mode == FOUR_WHEEL_STEERING_MODE_HOLONOMIC)
 		  {			  
 			// To be the same vel as other steering modes
-			vel_left_front = (copysign(1.0, curr_cmd_twist.lin_x)) * sqrt(pow(curr_cmd_twist.lin_x,2))/wheel_radius_;
+			vel_left_front = (copysign(1.0, curr_cmd_twist.lin_x)) * sqrt(pow(curr_cmd_twist.lin_x,2))/(-wheel_radius_);
 			vel_right_front = vel_left_front;
 			vel_left_rear = vel_left_front;
 			vel_right_rear = vel_left_front;
@@ -527,9 +530,11 @@ namespace four_wheel_steering_controller{
 			// Need to limit vel to a maximum of near lin_x. Otherwise speed increases dramatically when steering at low speed at a large ang.z.
 			// Result was vel = ~5.7 * lin.x at an angle but not when straight
 			double vel_scale_factor = -(fabs(curr_cmd_twist.ang*steering_track) / fabs(curr_cmd_twist.lin_x));
-			multip_calc = fabs(vel_scale_factor) + 1;
 			
-			ROS_INFO_STREAM_NAMED(name_, " scale = " << vel_scale_factor << " multip_calc = " << multip_calc);
+			// Increase to dampen 4WS ackermann velocity with a small lin.x input
+			multip_calc = fabs(vel_scale_factor) + 3;
+			
+			//ROS_INFO_STREAM_NAMED(name_, " scale = " << vel_scale_factor << " multip_calc = " << multip_calc);
 			
 			//if ((curr_cmd_twist.ang == 0.0) || (vel_scale_factor < 1.0)) // sign issue here? need to preserve vel_scale_factor sign?
 			//	vel_scale_factor = 1;
@@ -550,7 +555,7 @@ namespace four_wheel_steering_controller{
 																			  +pow(wheel_base_*curr_cmd_twist.ang/2.0,2)))/wheel_radius_
 														   + vel_steering_offset)/vel_scale_factor;
 														   
-			ROS_INFO_STREAM_NAMED(name_, "vel_l = " << vel_left_front << " vel scal " << vel_scale_factor);
+			//ROS_INFO_STREAM_NAMED(name_, "vel_l = " << vel_left_front << " vel scal " << vel_scale_factor);
 		  }
 	  }
 
@@ -592,8 +597,7 @@ namespace four_wheel_steering_controller{
 				//ROS_INFO("1 - front_left_steering = %f", front_left_steering);
 			}
 			else 
-			{	
-		/*
+			{
 				// Same as above 4WS Ackerman but allows steering at large ang.z with small lin.x
 				front_left_steering = atan(curr_cmd_twist.ang*wheel_base_ /
 											(multip_calc*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
@@ -604,7 +608,6 @@ namespace four_wheel_steering_controller{
 				rear_right_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
 											 (multip_calc*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
 				//ROS_INFO("2 - front_left_steering = %f, multip_calc = %f", front_left_steering, multip_calc);
-				*/
 			}
 		  }
 		  break;
@@ -621,7 +624,7 @@ namespace four_wheel_steering_controller{
 		  default:
 			break;
 	  }
-	  ROS_INFO_STREAM_NAMED(name_, "fl = " << front_left_steering << "fr = " << front_right_steering << "rl = " << rear_left_steering << "rr = " << rear_right_steering);
+	  //ROS_INFO_STREAM_NAMED(name_, "fl = " << front_left_steering << "fr = " << front_right_steering << "rl = " << rear_left_steering << "rr = " << rear_right_steering);
     }
     else // 4WS command type
     {
