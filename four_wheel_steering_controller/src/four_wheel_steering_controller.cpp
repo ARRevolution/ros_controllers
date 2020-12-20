@@ -195,8 +195,8 @@ namespace four_wheel_steering_controller{
     controller_nh.param("angular/z/min_acceleration"       , limiter_ang_.min_acceleration       , -limiter_ang_.max_acceleration      );
 	
 	// Tolerances
-	controller_nh.param("spin_angle_tol", spin_angle_tol_, spin_angle_tol_);
-    ROS_INFO_STREAM_NAMED(name_, "Spin angle tolerance is " << spin_angle_tol_);
+	controller_nh.param("pos_angle_tol", pos_angle_tol_, pos_angle_tol_);
+    ROS_INFO_STREAM_NAMED(name_, "Position angle tolerance is " << pos_angle_tol_);
 		
 	controller_nh.param("velocity_tol", velocity_tol_, velocity_tol_);
     ROS_INFO_STREAM_NAMED(name_, "Velocity tolerance is " << velocity_tol_);	
@@ -336,7 +336,7 @@ namespace four_wheel_steering_controller{
                      front_steering_pos, rear_steering_pos, time);
 					 
 	// Update Local Steering and velocity status
-	if ((front_steering_pos == 0.0) && (rear_steering_pos == 0.0))
+	if (is_steering_pos_within_tol(front_steering_pos, 0.0, pos_angle_tol_) &&  is_steering_pos_within_tol(rear_steering_pos, 0.0, pos_angle_tol_))
 	{
 		steering_pos_at_zero = true;
 	}
@@ -355,7 +355,7 @@ namespace four_wheel_steering_controller{
 	}
 	
 	// Check if steering is at spin position
-	if (is_steering_pos_at_spin(fl_steering, -spin_mode_steering_angle, spin_angle_tol_) && is_steering_pos_at_spin(fr_steering, spin_mode_steering_angle, spin_angle_tol_) && is_steering_pos_at_spin(rl_steering, spin_mode_steering_angle, spin_angle_tol_) && is_steering_pos_at_spin(rr_steering, -spin_mode_steering_angle, spin_angle_tol_))
+	if (is_steering_pos_within_tol(fl_steering, -spin_mode_steering_angle, pos_angle_tol_) && is_steering_pos_within_tol(fr_steering, spin_mode_steering_angle, pos_angle_tol_) && is_steering_pos_within_tol(rl_steering, spin_mode_steering_angle, pos_angle_tol_) && is_steering_pos_within_tol(rr_steering, -spin_mode_steering_angle, pos_angle_tol_))
 	{
 		steering_pos_at_spin = true;
 		//current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;

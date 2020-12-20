@@ -189,7 +189,7 @@ namespace four_wheel_steering_controller{
     SpeedLimiter limiter_ang_;
 	
 	// Tolerances
-	double spin_angle_tol_;
+	double pos_angle_tol_;
 	double velocity_tol_;
 	
 	// Steering Mode
@@ -201,7 +201,7 @@ namespace four_wheel_steering_controller{
 	bool steering_pos_at_spin;
 	bool wheel_velocity_at_zero;
 	
-	bool is_steering_pos_at_spin(double in, double target, double tol)
+	bool is_steering_pos_within_tol(double in, double target, double tol)
 	{
 		bool res = false;
 		if ((in <= target + tol) && (in >= target - tol))
