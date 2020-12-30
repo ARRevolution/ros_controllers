@@ -149,7 +149,7 @@ namespace four_wheel_steering_controller{
 
     // Odometry related:
     double publish_rate;
-    controller_nh.param("publish_rate", publish_rate, 50.0);
+    controller_nh.param("publish_rate", publish_rate, 25.0);
     ROS_INFO_STREAM_NAMED(name_, "Controller state will be published at "
                           << publish_rate << "Hz.");
     publish_period_ = ros::Duration(1.0 / publish_rate);
@@ -202,8 +202,14 @@ namespace four_wheel_steering_controller{
     ROS_INFO_STREAM_NAMED(name_, "Velocity tolerance is " << velocity_tol_);	
 
 	// 4WS or Skid Steer
+	fws_n_skid_steer_ = false;
     controller_nh.param("fws_n_skid_steer", fws_n_skid_steer_, fws_n_skid_steer_);
     ROS_INFO_STREAM_NAMED(name_, "Steering Mode " << (fws_n_skid_steer_?"4WS":"Skid Steer"));	
+	
+	// Enable spin mode
+	enable_spin_steer_ = false;
+	controller_nh.param("enable_spin_steer", enable_spin_steer_, enable_spin_steer_);
+    ROS_INFO_STREAM_NAMED(name_, "Steering Spin Mode " << (enable_spin_steer_?"Enabled":"Disabled"));
 						  
     // If either parameter is not available, we need to look up the value in the URDF
     bool lookup_track = !controller_nh.getParam("track", track_);
@@ -330,7 +336,7 @@ namespace four_wheel_steering_controller{
                                      (tan(rl_steering) + tan(rr_steering)));
     }
 
-    ROS_DEBUG_STREAM_THROTTLE(1, "rl_steering "<<rl_steering<<" rr_steering "<<rr_steering<<" rear_steering_pos "<<rear_steering_pos);
+    //ROS_DEBUG_STREAM_THROTTLE(1, "rl_steering "<<rl_steering<<" rr_steering "<<rr_steering<<" rear_steering_pos "<<rear_steering_pos);
     // Estimate linear and angular velocity using joint information
     odometry_.update(fl_speed, fr_speed, rl_speed, rr_speed,
                      front_steering_pos, rear_steering_pos, time);
@@ -339,14 +345,19 @@ namespace four_wheel_steering_controller{
 	if (is_steering_pos_within_tol(front_steering_pos, 0.0, pos_angle_tol_) &&  is_steering_pos_within_tol(rear_steering_pos, 0.0, pos_angle_tol_))
 	{
 		steering_pos_at_zero = true;
+		ROS_INFO_STREAM_NAMED(name_,"pos_at_zero");
 	}
 	else
 		steering_pos_at_zero = false;
 	
-	if (((fabs(fl_speed) < velocity_tol_) && (fabs(fr_speed) < velocity_tol_) && (fabs(rl_speed) < velocity_tol_) && (fabs(rr_speed) < velocity_tol_)) || (fabs(odometry_.getLinear()) < velocity_tol_))
+	//if ((fabs(odometry_.getLinear()) < velocity_tol_))  // Why did you add this? Something to do with the simulation
+	//	ROS_INFO_STREAM_NAMED(name_,"1 - vel_at_zero");
+		
+	
+	if (((fabs(fl_speed) < velocity_tol_) && (fabs(fr_speed) < velocity_tol_) && (fabs(rl_speed) < velocity_tol_) && (fabs(rr_speed) < velocity_tol_))  )
 	{
 		wheel_velocity_at_zero = true;
-		//ROS_INFO_STREAM_NAMED(name_,"vel_at_zero");
+		ROS_INFO_STREAM_NAMED(name_,"vel_at_zero - tol = " << velocity_tol_);
 	}
 	else
 	{
@@ -355,16 +366,19 @@ namespace four_wheel_steering_controller{
 	}
 	
 	// Check if steering is at spin position
-	if (is_steering_pos_within_tol(fl_steering, -spin_mode_steering_angle, pos_angle_tol_) && is_steering_pos_within_tol(fr_steering, spin_mode_steering_angle, pos_angle_tol_) && is_steering_pos_within_tol(rl_steering, spin_mode_steering_angle, pos_angle_tol_) && is_steering_pos_within_tol(rr_steering, -spin_mode_steering_angle, pos_angle_tol_))
+	if (enable_spin_steer_)
 	{
-		steering_pos_at_spin = true;
-		//current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;
-		//ROS_INFO_STREAM_NAMED(name_,"pos_at_spin - " << fl_steering << " - " << fr_steering << " - " << rl_steering << " - " << rr_steering);
-	}
-	else
-	{
-		steering_pos_at_spin = false;
-		//ROS_INFO_STREAM_NAMED(name_,"pos_NOT_at_spin - " << fl_steering << " - " << fr_steering << " - " << rl_steering << " - " << rr_steering);
+		if (is_steering_pos_within_tol(fl_steering, -spin_mode_steering_angle, pos_angle_tol_) && is_steering_pos_within_tol(fr_steering, spin_mode_steering_angle, pos_angle_tol_) && is_steering_pos_within_tol(rl_steering, spin_mode_steering_angle, pos_angle_tol_) && is_steering_pos_within_tol(rr_steering, -spin_mode_steering_angle, pos_angle_tol_))
+		{
+			steering_pos_at_spin = true;
+			//current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;
+			ROS_INFO_STREAM_NAMED(name_,"pos_at_spin - " << fl_steering << " - " << fr_steering << " - " << rl_steering << " - " << rr_steering);
+		}
+		else
+		{
+			steering_pos_at_spin = false;
+			//ROS_INFO_STREAM_NAMED(name_,"pos_NOT_at_spin - " << fl_steering << " - " << fr_steering << " - " << rl_steering << " - " << rr_steering);
+		}
 	}
 		
     // Publish odometry message
@@ -473,12 +487,13 @@ namespace four_wheel_steering_controller{
 			current_steering_mode = FOUR_WHEEL_STEERING_MODE_STOPPED;
 	  }	  
 		
+	
 	  if ((fabs(curr_cmd_twist.ang) > 0.001) || (current_steering_mode == FOUR_WHEEL_STEERING_MODE_SPIN))
 	  { 		
-	    // Need to make absolutely certain that we are stationary before going into spin mode - otherwise damnage will occur!!!
-		if ((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_SPIN) && (curr_cmd_twist.lin_x == 0)) // go into spin mode //
+		// Need to make absolutely certain that we are stationary before going into spin mode - otherwise damnage will occur!!!
+		if (enable_spin_steer_ && (current_steering_mode <= FOUR_WHEEL_STEERING_MODE_SPIN) && (current_steering_mode != FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY) && (curr_cmd_twist.lin_x == 0)) // go into spin mode
 			current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;
-		else if (current_steering_mode == FOUR_WHEEL_STEERING_MODE_SPIN) // Transistion out of spin
+		else if (enable_spin_steer_ && (current_steering_mode == FOUR_WHEEL_STEERING_MODE_SPIN)) // Transistion out of spin
 				current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN_TRANS;
 		// 4WS Ackerman or Skid Steer depending on param '4ws_n_skid_steer'- make sure other steering modes have reset to 0 pos before starting
 		else if ((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY) || (current_steering_mode == FOUR_WHEEL_STEERING_MODE_4WS))
@@ -491,12 +506,10 @@ namespace four_wheel_steering_controller{
 	  }
 	  // Holonomic 4WS - make sure all wheels are at 0 pos first, otherwise get cruel combination of steering positions
 	  else if (((current_steering_mode <= FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY) || (current_steering_mode == FOUR_WHEEL_STEERING_MODE_HOLONOMIC)) && (fabs(curr_cmd_twist.lin_y) > 0.001)) 
-	  	  current_steering_mode = FOUR_WHEEL_STEERING_MODE_HOLONOMIC;		
-		
-	
-		//ROS_INFO_STREAM_NAMED(name_, "current_steering_mode = " << current_steering_mode);
-		
-		
+		  current_steering_mode = FOUR_WHEEL_STEERING_MODE_HOLONOMIC;		
+	  
+	  //ROS_INFO_STREAM_NAMED(name_, "current_steering_mode = " << current_steering_mode);
+			
       // Limit velocities and accelerations:
       limiter_lin_.limit(curr_cmd_twist.lin_x, last0_cmd_.lin_x, last1_cmd_.lin_x, cmd_dt);
       limiter_ang_.limit(curr_cmd_twist.ang, last0_cmd_.ang, last1_cmd_.ang, cmd_dt);
@@ -574,10 +587,10 @@ namespace four_wheel_steering_controller{
 			// only set velocity once all wheels are at 45 degrees
 			if (steering_pos_at_spin)
 			{
-				vel_left_front = -curr_cmd_twist.ang;
-				vel_right_front = curr_cmd_twist.ang;
-				vel_left_rear = -curr_cmd_twist.ang;
-				vel_right_rear = curr_cmd_twist.ang;
+				vel_left_front = -curr_cmd_twist.ang * 2;
+				vel_right_front = curr_cmd_twist.ang * 2;
+				vel_left_rear = -curr_cmd_twist.ang * 2;
+				vel_right_rear = curr_cmd_twist.ang * 2;
 			}
 		  }
 		  break;
@@ -596,7 +609,7 @@ namespace four_wheel_steering_controller{
 											 (2.0*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
 				//ROS_INFO("1 - front_left_steering = %f", front_left_steering);
 			}
-			else 
+		/*	else if (fabs(curr_cmd_twist.lin_x) > (velocity_tol_ * 2)) // Need to check there is some lin.x otherwise it will try to spin!
 			{
 				// Same as above 4WS Ackerman but allows steering at large ang.z with small lin.x
 				front_left_steering = atan(curr_cmd_twist.ang*wheel_base_ /
@@ -608,7 +621,7 @@ namespace four_wheel_steering_controller{
 				rear_right_steering = -atan(curr_cmd_twist.ang*wheel_base_ /
 											 (multip_calc*curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track));
 				//ROS_INFO("2 - front_left_steering = %f, multip_calc = %f", front_left_steering, multip_calc);
-			}
+			}*/
 		  }
 		  break;
 		  
@@ -628,6 +641,7 @@ namespace four_wheel_steering_controller{
     }
     else // 4WS command type
     {
+		ROS_INFO("?!?!?!! 4WS command type");
       // Limit velocities and accelerations:
       limiter_lin_.limit(curr_cmd_4ws.lin, last0_cmd_.lin_x, last1_cmd_.lin_x, cmd_dt);
       last1_cmd_ = last0_cmd_;
