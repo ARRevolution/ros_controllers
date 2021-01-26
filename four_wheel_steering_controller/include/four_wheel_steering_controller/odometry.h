@@ -45,6 +45,15 @@ namespace four_wheel_steering_controller
 {
   namespace bacc = boost::accumulators;
 
+	enum {
+		FOUR_WHEEL_STEERING_MODE_STOPPED,
+		FOUR_WHEEL_STEERING_MODE_LIN_X_ONLY,
+		FOUR_WHEEL_STEERING_MODE_SPIN_TRANS,
+		FOUR_WHEEL_STEERING_MODE_SPIN,
+		FOUR_WHEEL_STEERING_MODE_4WS,
+		FOUR_WHEEL_STEERING_MODE_HOLONOMIC
+	};
+
   /**
    * \brief The Odometry class handles odometry readings
    * (2D pose and velocity with related timestamp)
@@ -82,7 +91,7 @@ namespace four_wheel_steering_controller
      * \return true if the odometry is actually updated
      */
     bool update(const double& fl_speed, const double& fr_speed, const double& rl_speed, const double& rr_speed,
-                double front_steering, double rear_steering, const ros::Time &time);
+                double front_steering, double rear_steering, const ros::Time &time, const double& mean_steer, int steering_mode);
 
     /**
      * \brief heading getter

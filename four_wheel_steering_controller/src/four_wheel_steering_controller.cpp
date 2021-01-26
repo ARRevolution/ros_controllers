@@ -362,8 +362,9 @@ namespace four_wheel_steering_controller{
 
     //ROS_DEBUG_STREAM_THROTTLE(1, "rl_steering "<<rl_steering<<" rr_steering "<<rr_steering<<" rear_steering_pos "<<rear_steering_pos);
     // Estimate linear and angular velocity using joint information
+	const double mean_steering = (fl_steering + fr_steering + rl_steering + rr_steering) / 4;	
     odometry_.update(fl_speed, fr_speed, rl_speed, rr_speed,
-                     front_steering_pos, rear_steering_pos, time);
+                     front_steering_pos, rear_steering_pos, time, mean_steering, current_steering_mode);
 					 
 	// Update Local Steering and velocity status
 	if (is_steering_pos_within_tol(front_steering_pos, 0.0, pos_angle_tol_) &&  is_steering_pos_within_tol(rear_steering_pos, 0.0, pos_angle_tol_))
