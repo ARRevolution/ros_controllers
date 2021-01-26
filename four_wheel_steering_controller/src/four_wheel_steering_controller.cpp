@@ -215,30 +215,51 @@ namespace four_wheel_steering_controller{
     bool lookup_track = !controller_nh.getParam("track", track_);
     bool lookup_wheel_radius = !controller_nh.getParam("wheel_radius", wheel_radius_);
     bool lookup_wheel_base = !controller_nh.getParam("wheel_base", wheel_base_);
+	bool lookup_wheel_steering_y_offset = !controller_nh.getParam("wheel_steering_y_offset", wheel_steering_y_offset_);
+	
+	//ROS_INFO_STREAM_NAMED(name_, "track=" << track_ << " wheel_radius=" << wheel_radius_ << " wheel_base=" << wheel_base_ << " wheel_steering_y_offset=" << wheel_steering_y_offset_);
+	//ROS_INFO_STREAM_NAMED(name_, "b-track=" << lookup_track << " b-wheel_radius=" << lookup_wheel_radius << " b-wheel_base=" << lookup_wheel_base << " b-wheel_steering_y_offset=" << lookup_wheel_steering_y_offset);
 
     urdf_geometry_parser::UrdfGeometryParser uvk(root_nh, base_frame_id_);
     if(lookup_track)
       if(!uvk.getDistanceBetweenJoints(front_wheel_names[0], front_wheel_names[1], track_))
         return false;
       else
+	  {
         controller_nh.setParam("track",track_);
+		ROS_INFO_STREAM_NAMED(name_, "track was calculated");
+	  }
 
-    if(!uvk.getDistanceBetweenJoints(front_steering_names[0], front_wheel_names[0], wheel_steering_y_offset_))
-      return false;
-    else
-      controller_nh.setParam("wheel_steering_y_offset",wheel_steering_y_offset_);
+	if (lookup_wheel_steering_y_offset)
+	{
+		if(!uvk.getDistanceBetweenJoints(front_steering_names[0], front_wheel_names[0], wheel_steering_y_offset_))
+		  return false;
+		else
+		{
+		  controller_nh.setParam("wheel_steering_y_offset",wheel_steering_y_offset_);
+		  ROS_INFO_STREAM_NAMED(name_, "wheel_steering_y_offset was calculated");
+		}
+	}
 
     if(lookup_wheel_radius)
       if(!uvk.getJointRadius(front_wheel_names[0], wheel_radius_))
         return false;
       else
+	  {
         controller_nh.setParam("wheel_radius",wheel_radius_);
+		ROS_INFO_STREAM_NAMED(name_, "wheel_radius was calculated");
+	  }
 
     if(lookup_wheel_base)
       if(!uvk.getDistanceBetweenJoints(front_wheel_names[0], rear_wheel_names[0], wheel_base_))
         return false;
       else
+	  {
         controller_nh.setParam("wheel_base",wheel_base_);
+		ROS_INFO_STREAM_NAMED(name_, "wheel_base was calculated");
+	  }
+	  
+	ROS_INFO_STREAM_NAMED(name_, "track=" << track_ << " wheel_radius=" << wheel_radius_ << " wheel_base=" << wheel_base_ << " wheel_steering_y_offset=" << wheel_steering_y_offset_); 
 
     // Regardless of how we got the separation and radius, use them
     // to set the odometry parameters
@@ -345,7 +366,7 @@ namespace four_wheel_steering_controller{
 	if (is_steering_pos_within_tol(front_steering_pos, 0.0, pos_angle_tol_) &&  is_steering_pos_within_tol(rear_steering_pos, 0.0, pos_angle_tol_))
 	{
 		steering_pos_at_zero = true;
-		ROS_INFO_STREAM_NAMED(name_,"pos_at_zero");
+		//ROS_INFO_STREAM_NAMED(name_,"pos_at_zero");
 	}
 	else
 		steering_pos_at_zero = false;
@@ -357,7 +378,7 @@ namespace four_wheel_steering_controller{
 	if (((fabs(fl_speed) < velocity_tol_) && (fabs(fr_speed) < velocity_tol_) && (fabs(rl_speed) < velocity_tol_) && (fabs(rr_speed) < velocity_tol_))  )
 	{
 		wheel_velocity_at_zero = true;
-		ROS_INFO_STREAM_NAMED(name_,"vel_at_zero - tol = " << velocity_tol_);
+		//ROS_INFO_STREAM_NAMED(name_,"vel_at_zero - tol = " << velocity_tol_);
 	}
 	else
 	{
@@ -372,7 +393,7 @@ namespace four_wheel_steering_controller{
 		{
 			steering_pos_at_spin = true;
 			//current_steering_mode = FOUR_WHEEL_STEERING_MODE_SPIN;
-			ROS_INFO_STREAM_NAMED(name_,"pos_at_spin - " << fl_steering << " - " << fr_steering << " - " << rl_steering << " - " << rr_steering);
+			//ROS_INFO_STREAM_NAMED(name_,"pos_at_spin - " << fl_steering << " - " << fr_steering << " - " << rl_steering << " - " << rr_steering);
 		}
 		else
 		{
@@ -524,7 +545,7 @@ namespace four_wheel_steering_controller{
 		  if (current_steering_mode == FOUR_WHEEL_STEERING_MODE_HOLONOMIC)
 		  {			  
 			// To be the same vel as other steering modes
-			vel_left_front = (copysign(1.0, curr_cmd_twist.lin_x)) * sqrt(pow(curr_cmd_twist.lin_x,2))/(-wheel_radius_);
+			vel_left_front = (copysign(1.0, curr_cmd_twist.lin_x)) * sqrt(pow(curr_cmd_twist.lin_x,2))/(wheel_radius_);
 			vel_right_front = vel_left_front;
 			vel_left_rear = vel_left_front;
 			vel_right_rear = vel_left_front;
@@ -542,7 +563,7 @@ namespace four_wheel_steering_controller{
 			
 			// Need to limit vel to a maximum of near lin_x. Otherwise speed increases dramatically when steering at low speed at a large ang.z.
 			// Result was vel = ~5.7 * lin.x at an angle but not when straight
-			double vel_scale_factor = -(fabs(curr_cmd_twist.ang*steering_track) / fabs(curr_cmd_twist.lin_x));
+			double vel_scale_factor = (fabs(curr_cmd_twist.ang*steering_track) / fabs(curr_cmd_twist.lin_x)); // -
 			
 			// Increase to dampen 4WS ackermann velocity with a small lin.x input
 			multip_calc = fabs(vel_scale_factor) + 3;
