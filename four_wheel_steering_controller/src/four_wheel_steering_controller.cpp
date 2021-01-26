@@ -200,6 +200,9 @@ namespace four_wheel_steering_controller{
 		
 	controller_nh.param("velocity_tol", velocity_tol_, velocity_tol_);
     ROS_INFO_STREAM_NAMED(name_, "Velocity tolerance is " << velocity_tol_);	
+	
+	controller_nh.param("spin_vel_multiplier", spin_vel_multiplier_, spin_vel_multiplier_);
+    ROS_INFO_STREAM_NAMED(name_, "spin_vel_multiplier is " << spin_vel_multiplier_);	
 
 	// 4WS or Skid Steer
 	fws_n_skid_steer_ = false;
@@ -608,17 +611,17 @@ namespace four_wheel_steering_controller{
 			// only set velocity once all wheels are at 45 degrees
 			if (steering_pos_at_spin)
 			{
-				vel_left_front = -curr_cmd_twist.ang * 2;
-				vel_right_front = curr_cmd_twist.ang * 2;
-				vel_left_rear = -curr_cmd_twist.ang * 2;
-				vel_right_rear = curr_cmd_twist.ang * 2;
+				vel_left_front = -curr_cmd_twist.ang * spin_vel_multiplier_;
+				vel_right_front = curr_cmd_twist.ang * spin_vel_multiplier_;
+				vel_left_rear = -curr_cmd_twist.ang * spin_vel_multiplier_;
+				vel_right_rear = curr_cmd_twist.ang * spin_vel_multiplier_;
 			}
 		  }
 		  break;
 		  
 		  case FOUR_WHEEL_STEERING_MODE_4WS:
 		  {
-			if (fabs(2.0*curr_cmd_twist.lin_x) > fabs(curr_cmd_twist.ang*steering_track))
+			if (fabs(2.0*curr_cmd_twist.lin_x) > fabs(curr_cmd_twist.ang*steering_track)) // otherwise the output will be invalid - goes into a spin position but wheels spin incorrectly.
 			{
 				front_left_steering = atan(curr_cmd_twist.ang*wheel_base_ /
 											(2.0*curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track));
@@ -664,6 +667,7 @@ namespace four_wheel_steering_controller{
     {
 		ROS_INFO("?!?!?!! 4WS command type");
       // Limit velocities and accelerations:
+	  /*
       limiter_lin_.limit(curr_cmd_4ws.lin, last0_cmd_.lin_x, last1_cmd_.lin_x, cmd_dt);
       last1_cmd_ = last0_cmd_;
       last0_cmd_.lin_x = curr_cmd_4ws.lin;
@@ -715,6 +719,7 @@ namespace four_wheel_steering_controller{
                                                                           +pow(l_rear*angular_speed_cmd,2)))/wheel_radius_
                                                      + vel_steering_offset;
       }
+	  */
     }
 
     ROS_DEBUG_STREAM_THROTTLE(1, "vel_left_rear "<<vel_left_rear<<" front_right_steering "<<front_right_steering);

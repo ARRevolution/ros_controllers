@@ -195,6 +195,7 @@ namespace four_wheel_steering_controller{
 	// Steering Mode
 	bool fws_n_skid_steer_;
 	bool enable_spin_steer_;
+	double spin_vel_multiplier_;
 	
 	// Steering and velocity status
 	int current_steering_mode;
