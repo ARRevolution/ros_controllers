@@ -78,29 +78,21 @@ namespace four_wheel_steering_controller
 	{
 		case FOUR_WHEEL_STEERING_MODE_SPIN:
 		{
-			
+			angular_ = wheel_radius_ * (((-fl_speed) + (-rl_speed) + fr_speed + rr_speed) / 4);
+			linear_x_ = 0; // mean_speed * cos(mean_steer);
+			linear_y_ = 0; //mean_speed * sin(mean_steer);
+			linear_ =  0; //copysign(1.0, mean_speed)*sqrt(pow(linear_x_,2)+pow(linear_y_,2));
 		}
 		break;
 		
 		case FOUR_WHEEL_STEERING_MODE_HOLONOMIC:
 		{
 			double mean_speed = wheel_radius_ * ((fl_speed + fr_speed + rl_speed + rr_speed) / 4);
-
-			angular_ = 0; //(front_linear_speed*front_tmp + rear_linear_speed*rear_tmp)/2.0;
-			
-		//	if (fabs(mean_steer) < M_PI_2)
-		//	{
-				linear_x_ = mean_speed * cos(mean_steer);
-				linear_y_ = mean_speed * sin(mean_steer);
-		/*	}
-			else
-			{
-				linear_x_ = -mean_speed * cos(mean_steer);
-				linear_y_ = -mean_speed * sin(mean_steer);
-			}*/
-			
+			angular_ = 0;
+			linear_x_ = mean_speed * cos(mean_steer);
+			linear_y_ = mean_speed * sin(mean_steer);
 			linear_ =  copysign(1.0, mean_speed)*sqrt(pow(linear_x_,2)+pow(linear_y_,2));
-			ROS_INFO("linear_ = %f, linear_x_ = %f, linear_y_ = %f, f_steer = %f, ms = %f", linear_, linear_x_, linear_y_, front_steering, mean_speed);
+			//ROS_INFO("linear_ = %f, linear_x_ = %f, linear_y_ = %f, f_steer = %f, ms = %f", linear_, linear_x_, linear_y_, front_steering, mean_speed);
 		}
 		break;
 		
