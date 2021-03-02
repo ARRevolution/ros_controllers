@@ -549,7 +549,8 @@ namespace four_wheel_steering_controller{
 		  if (current_steering_mode == FOUR_WHEEL_STEERING_MODE_HOLONOMIC)
 		  {			  
 			// To be the same vel as other steering modes
-			vel_left_front = (copysign(1.0, curr_cmd_twist.lin_x)) * sqrt(pow(curr_cmd_twist.lin_x,2))/(wheel_radius_);
+			//vel_left_front = copysign(1.0, curr_cmd_twist.lin_x) * curr_cmd_twist.lin_x / wheel_radius_;
+			vel_left_front = curr_cmd_twist.lin_x;
 			vel_right_front = vel_left_front;
 			vel_left_rear = vel_left_front;
 			vel_right_rear = vel_left_front;
@@ -567,17 +568,18 @@ namespace four_wheel_steering_controller{
 			
 			// Need to limit vel to a maximum of near lin_x. Otherwise speed increases dramatically when steering at low speed at a large ang.z.
 			// Result was vel = ~5.7 * lin.x at an angle but not when straight
-			double vel_scale_factor = (fabs(curr_cmd_twist.ang*steering_track) / fabs(curr_cmd_twist.lin_x)); // -
+			double vel_scale_factor = 1; //(fabs(curr_cmd_twist.ang*steering_track) / fabs(curr_cmd_twist.lin_x)); // -
 			
 			// Increase to dampen 4WS ackermann velocity with a small lin.x input
-			multip_calc = fabs(vel_scale_factor) + 3;
+			//multip_calc = fabs(vel_scale_factor) + 3;
 			
 			//ROS_INFO_STREAM_NAMED(name_, " scale = " << vel_scale_factor << " multip_calc = " << multip_calc);
 			
 			//if ((curr_cmd_twist.ang == 0.0) || (vel_scale_factor < 1.0)) // sign issue here? need to preserve vel_scale_factor sign?
 			//	vel_scale_factor = 1;
-			if ((curr_cmd_twist.ang == 0.0) || (fabs(vel_scale_factor) < 1.0))
-				vel_scale_factor = copysign(1.0, vel_scale_factor);
+			
+			//if ((curr_cmd_twist.ang == 0.0) || (fabs(vel_scale_factor) < 1.0))
+			//	vel_scale_factor = copysign(1.0, vel_scale_factor);
 			
 			double vel_steering_offset = (curr_cmd_twist.ang*wheel_steering_y_offset_)/wheel_radius_;
 			vel_left_front  = (copysign(1.0, curr_cmd_twist.lin_x) * sqrt((pow(curr_cmd_twist.lin_x - curr_cmd_twist.ang*steering_track/2,2)
@@ -592,7 +594,14 @@ namespace four_wheel_steering_controller{
 			vel_right_rear = (copysign(1.0, curr_cmd_twist.lin_x) * sqrt((pow(curr_cmd_twist.lin_x + curr_cmd_twist.ang*steering_track/2,2)
 																			  +pow(wheel_base_*curr_cmd_twist.ang/2.0,2)))/wheel_radius_
 														   + vel_steering_offset)/vel_scale_factor;
-														   
+			
+			// The above calcs appear to do turns at a faster average wheel vel than driving straight.
+			vel_scale_factor = (fabs(vel_left_front + vel_right_front + vel_left_rear + vel_right_rear) / 4) / fabs(curr_cmd_twist.lin_x);
+			vel_left_front = vel_left_front / vel_scale_factor;
+			vel_right_front = vel_right_front / vel_scale_factor;
+			vel_left_rear = vel_left_rear / vel_scale_factor;
+			vel_right_rear = vel_right_rear / vel_scale_factor;
+													   
 			//ROS_INFO_STREAM_NAMED(name_, "vel_l = " << vel_left_front << " vel scal " << vel_scale_factor);
 		  }
 	  }
@@ -666,7 +675,7 @@ namespace four_wheel_steering_controller{
     }
     else // 4WS command type
     {
-		ROS_INFO("?!?!?!! 4WS command type");
+		//ROS_INFO("?!?!?!! 4WS command type");
       // Limit velocities and accelerations:
 	  /*
       limiter_lin_.limit(curr_cmd_4ws.lin, last0_cmd_.lin_x, last1_cmd_.lin_x, cmd_dt);
@@ -727,6 +736,12 @@ namespace four_wheel_steering_controller{
     // Set wheels velocities:
     if(front_wheel_joints_.size() == 2 && rear_wheel_joints_.size() == 2)
     {
+	  // convert vel from m/s to rad/s
+	  vel_left_front = vel_left_front / wheel_radius_;
+	  vel_right_front = vel_right_front / wheel_radius_;
+	  vel_left_rear = vel_left_rear / wheel_radius_;
+	  vel_right_rear = vel_right_rear / wheel_radius_;
+	  
       front_wheel_joints_[0].setCommand(vel_left_front);
       front_wheel_joints_[1].setCommand(vel_right_front);
       rear_wheel_joints_[0].setCommand(vel_left_rear);
